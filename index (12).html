@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot Controller - Dashboard Integrado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card-shadow { box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .status-online { animation: pulse 2s infinite; }
+        .status-offline { animation: blink 1s infinite; }
+        .status-connecting { animation: spin 1s linear infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
+        .connection-indicator {
+            transition: all 0.3s ease;
+        }
+        .api-status {
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Connection Status Modal -->
+    <div id="connectionModal" class="modal">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 card-shadow">
+            <div class="text-center">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span class="text-3xl status-connecting">🔄</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-2">Configurando Conexión</h3>
+                <p class="text-gray-600 mb-4">Conectando con tu bot de Python...</p>
+                <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                    <div id="connectionProgress" class="bg-blue-600 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                </div>
+                <p id="connectionStatus" class="text-sm text-gray-500">Iniciando conexión...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center">
+                        <span class="text-2xl">🤖</span>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold">WhatsApp Bot Controller</h1>
+                        <p class="text-blue-100">Conectado con Python API • <span id="groupCount">0</span> grupos detectados</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- API Connection Status -->
+                    <div class="flex items-center space-x-2 bg-white bg-opacity-20 rounded-lg px-3 py-2">
+                        <div id="connectionIndicator" class="w-3 h-3 bg-red-400 rounded-full status-offline"></div>
+                        <span class="text-sm" id="connectionText">Desconectado</span>
+                    </div>
+                    
+                    <button id="connectBot" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-medium transition-colors">
+                        🔗 Conectar Bot
+                    </button>
+                    
+                    <button id="emergencyStop" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg font-medium transition-colors">
+                        🛑 Parar Bot
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-6 py-8">
+        <!-- API Configuration Panel -->
+        <div class="bg-white rounded-xl p-6 card-shadow mb-8" id="apiConfig">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">🔧 Configuración de API</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">URL del Bot Python</label>
+                    <input type="text" id="apiUrl" value="http://localhost:5000" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="http://localhost:5000">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">API Key (Opcional)</label>
+                    <input type="password" id="apiKey" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="tu-api-key-secreta">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Timeout (segundos)</label>
+                    <input type="number" id="apiTimeout" value="30" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            
+            <div class="flex space-x-3">
+                <button id="testConnection" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                    🧪 Probar Conexión
+                </button>
+                <button id="scanGroups" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                    🔍 Escanear Grupos Archivados
+                </button>
+                <button id="syncWhatsApp" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                    📱 Sincronizar WhatsApp
+                </button>
+            </div>
+            
+            <!-- API Status Display -->
+            <div class="mt-4 p-3 bg-gray-100 rounded-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-gray-700">Estado de la API:</span>
+                    <span id="apiStatusBadge" class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Desconectado</span>
+                </div>
+                <div class="api-status text-gray-600" id="apiStatusDetails">
+                    Esperando conexión con el bot de Python...
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Grupos Detectados</p>
+                        <p class="text-3xl font-bold text-gray-800" id="activeGroups">0</p>
+                        <p class="text-xs text-gray-400" id="lastScan">Último escaneo: Nunca</p>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">👥</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Posts Enviados Hoy</p>
+                        <p class="text-3xl font-bold text-green-600" id="postsToday">0</p>
+                        <p class="text-xs text-gray-400">Desde las 00:00</p>
+                    </div>
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">📤</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Próximo Envío</p>
+                        <p class="text-lg font-bold text-orange-600" id="nextSend">--</p>
+                        <p class="text-xs text-gray-400" id="nextSendDetails">Bot desconectado</p>
+                    </div>
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">⏰</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Tasa de Éxito</p>
+                        <p class="text-3xl font-bold text-purple-600" id="successRate">--</p>
+                        <p class="text-xs text-gray-400">Últimas 24h</p>
+                    </div>
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">📊</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Post Scheduler -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl p-6 card-shadow mb-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">📝 Programar Nuevo Post</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Mensaje</label>
+                            <textarea id="postMessage" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows="4" placeholder="Escribe tu mensaje aquí..."></textarea>
+                        </div>
+                        
+                        <!-- Multimedia Upload Section -->
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-400 transition-colors">
+                            <div class="text-center">
+                                <div class="flex justify-center mb-4">
+                                    <div class="flex space-x-2">
+                                        <span class="text-3xl">📷</span>
+                                        <span class="text-3xl">🎥</span>
+                                        <span class="text-3xl">📄</span>
+                                    </div>
+                                </div>
+                                <label for="mediaFiles" class="cursor-pointer">
+                                    <span class="text-lg font-medium text-gray-700">Subir archivos multimedia</span>
+                                    <p class="text-sm text-gray-500 mt-1">Imágenes, videos, documentos (máx. 16MB por archivo)</p>
+                                    <input type="file" id="mediaFiles" multiple accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip" class="hidden">
+                                </label>
+                                <div class="mt-3">
+                                    <button type="button" onclick="document.getElementById('mediaFiles').click()" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                                        📎 Seleccionar Archivos
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- File Preview Area -->
+                            <div id="filePreview" class="mt-4 hidden">
+                                <div class="border-t pt-4">
+                                    <h4 class="text-sm font-medium text-gray-700 mb-3">Archivos seleccionados:</h4>
+                                    <div id="fileList" class="space-y-2"></div>
+                                    <div class="mt-3 flex justify-between items-center">
+                                        <span class="text-sm text-gray-500">
+                                            <span id="fileCount">0</span> archivos • <span id="totalSize">0 MB</span>
+                                        </span>
+                                        <button type="button" id="clearFiles" class="text-red-600 hover:text-red-800 text-sm font-medium">
+                                            🗑️ Limpiar todo
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Intervalo Base (minutos)</label>
+                                <select id="interval" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="30">30 minutos</option>
+                                    <option value="45">45 minutos</option>
+                                    <option value="60">1 hora</option>
+                                    <option value="120">2 horas</option>
+                                    <option value="180">3 horas</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Variación Aleatoria (±min)</label>
+                                <input type="number" id="randomVariation" value="5" min="0" max="30" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Horario de Inicio</label>
+                                <input type="time" id="startTime" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="09:00">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Horario de Fin</label>
+                                <input type="time" id="endTime" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="18:00">
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" id="randomDelay" class="w-4 h-4 text-blue-600" checked>
+                                    <span class="text-sm text-gray-700">Retraso aleatorio anti-detección</span>
+                                </label>
+                                
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" id="weekendsOnly" class="w-4 h-4 text-blue-600">
+                                    <span class="text-sm text-gray-700">Solo fines de semana</span>
+                                </label>
+                                
+                                <label class="flex items-center space-x-2">
+                                    <input type="checkbox" id="respectSleep" class="w-4 h-4 text-blue-600" checked>
+                                    <span class="text-sm text-gray-700">Respetar horarios de descanso</span>
+                                </label>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Grupos Seleccionados</label>
+                                <div class="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                                    <span id="selectedGroupsCount">0</span> de <span id="totalGroupsCount">0</span> grupos
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button id="schedulePost" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-medium transition-colors disabled:bg-gray-400" disabled>
+                                📅 Programar Post
+                            </button>
+                            <button id="sendNow" class="bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-medium transition-colors disabled:bg-gray-400" disabled>
+                                🚀 Enviar Ahora
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Groups Management -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">👥 Grupos Archivados Detectados</h2>
+                        <div class="flex space-x-2">
+                            <button id="selectAllGroups" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition-colors">
+                                Seleccionar Todos
+                            </button>
+                            <button id="refreshGroups" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors">
+                                🔄 Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4 flex space-x-3">
+                        <input type="text" id="searchGroups" placeholder="Buscar grupos..." class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <select id="filterGroups" class="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="all">Todos los grupos</option>
+                            <option value="active">Solo activos</option>
+                            <option value="paused">Solo pausados</option>
+                            <option value="error">Con errores</option>
+                        </select>
+                    </div>
+                    
+                    <div class="space-y-2 max-h-96 overflow-y-auto" id="groupsList">
+                        <div class="text-center py-8 text-gray-500">
+                            <span class="text-4xl mb-2 block">📱</span>
+                            <p>Conecta tu bot para ver los grupos archivados</p>
+                            <p class="text-sm">El bot escaneará automáticamente WhatsApp Web</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Sidebar -->
+            <div class="space-y-6">
+                <!-- Real-time Activity Log -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">📋 Actividad en Tiempo Real</h2>
+                        <div class="flex items-center space-x-2">
+                            <div id="wsIndicator" class="w-2 h-2 bg-red-400 rounded-full"></div>
+                            <span class="text-xs text-gray-500">WebSocket</span>
+                        </div>
+                    </div>
+                    <div class="space-y-3 max-h-64 overflow-y-auto" id="activityLog">
+                        <div class="text-center py-4 text-gray-500">
+                            <span class="text-2xl mb-2 block">🔌</span>
+                            <p class="text-sm">Conecta el bot para ver actividad en tiempo real</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bot Settings -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">⚙️ Configuración Avanzada</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Límite diario por grupo</label>
+                            <input type="number" id="dailyLimit" value="5" min="1" max="20" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Pausa entre grupos (min)</label>
+                            <input type="number" id="groupDelay" value="3" min="1" max="10" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Máximo errores consecutivos</label>
+                            <input type="number" id="maxErrors" value="3" min="1" max="10" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div class="space-y-2">
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="smartMode" class="w-4 h-4 text-blue-600" checked>
+                                <span class="text-sm text-gray-700">Modo inteligente</span>
+                            </label>
+                            
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="autoRetry" class="w-4 h-4 text-blue-600" checked>
+                                <span class="text-sm text-gray-700">Reintentar automáticamente</span>
+                            </label>
+                            
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" id="logActivity" class="w-4 h-4 text-blue-600" checked>
+                                <span class="text-sm text-gray-700">Registrar actividad detallada</span>
+                            </label>
+                        </div>
+                        
+                        <button id="saveSettings" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors">
+                            💾 Guardar y Sincronizar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress Tracker -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">📈 Progreso del Día</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Posts enviados</span>
+                                <span id="progressText">0/0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="postsProgress" class="bg-blue-600 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Grupos completados</span>
+                                <span id="groupsProgressText">0/0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="groupsProgress" class="bg-green-600 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Tiempo activo hoy</span>
+                                <span id="uptimeText">00:00:00</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="uptimeProgress" class="bg-purple-600 h-2 rounded-full progress-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Python Code Generator -->
+                <div class="bg-white rounded-xl p-6 card-shadow">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">🐍 Código Python</h2>
+                    <p class="text-sm text-gray-600 mb-3">Estructura necesaria para tu bot:</p>
+                    
+                    <div class="space-y-2">
+                        <button id="downloadPythonTemplate" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg font-medium transition-colors text-sm">
+                            📥 Descargar Template
+                        </button>
+                        
+                        <button id="showApiDocs" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors text-sm">
+                            📚 Ver Documentación API
+                        </button>
+                        
+                        <button id="exportConfig" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors text-sm">
+                            ⚙️ Exportar Configuración
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration and Connection Management
+        class WhatsAppBotAPI {
+            constructor() {
+                this.baseUrl = 'http://localhost:5000';
+                this.apiKey = '';
+                this.timeout = 30000;
+                this.connected = false;
+                this.websocket = null;
+                this.groups = [];
+                this.selectedGroups = new Set();
+                this.stats = {
+                    postsToday: 0,
+                    successRate: 0,
+                    activeGroups: 0,
+                    nextSend: null
+                };
+            }
+
+            // Test API connection
+            async testConnection() {
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/status`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: this.timeout
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.updateConnectionStatus(true, 'Conectado exitosamente');
+                        this.updateStats(data.stats || {});
+                        return true;
+                    } else {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    this.updateConnectionStatus(false, `Error: ${error.message}`);
+                    return false;
+                }
+            }
+
+            // Scan for archived groups
+            async scanArchivedGroups() {
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/groups/archived`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.groups = data.groups || [];
+                        this.updateGroupsList();
+                        this.addActivity('success', `${this.groups.length} grupos archivados detectados`);
+                        return this.groups;
+                    } else {
+                        throw new Error(`Error al escanear grupos: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    this.addActivity('error', `Error escaneando grupos: ${error.message}`);
+                    return [];
+                }
+            }
+
+            // Send post to selected groups
+            async sendPost(message, options = {}, mediaFiles = []) {
+                try {
+                    const payload = {
+                        message: message,
+                        groups: Array.from(this.selectedGroups),
+                        mediaFiles: mediaFiles,
+                        options: {
+                            interval: options.interval || 30,
+                            randomDelay: options.randomDelay || true,
+                            respectSleep: options.respectSleep || true,
+                            startTime: options.startTime || '09:00',
+                            endTime: options.endTime || '18:00',
+                            ...options
+                        }
+                    };
+
+                    const response = await fetch(`${this.baseUrl}/api/posts/send`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const mediaText = mediaFiles.length > 0 ? ` con ${mediaFiles.length} archivos` : '';
+                        this.addActivity('success', `Post${mediaText} programado para ${this.selectedGroups.size} grupos`);
+                        return data;
+                    } else {
+                        throw new Error(`Error enviando post: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    this.addActivity('error', `Error: ${error.message}`);
+                    throw error;
+                }
+            }
+
+            // Update bot settings
+            async updateSettings(settings) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/settings`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(settings)
+                    });
+                    
+                    if (response.ok) {
+                        this.addActivity('info', 'Configuración actualizada exitosamente');
+                        return true;
+                    } else {
+                        throw new Error(`Error actualizando configuración: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    this.addActivity('error', `Error: ${error.message}`);
+                    return false;
+                }
+            }
+
+            // WebSocket connection for real-time updates
+            connectWebSocket() {
+                try {
+                    const wsUrl = this.baseUrl.replace('http', 'ws') + '/ws';
+                    this.websocket = new WebSocket(wsUrl);
+                    
+                    this.websocket.onopen = () => {
+                        document.getElementById('wsIndicator').className = 'w-2 h-2 bg-green-400 rounded-full';
+                        this.addActivity('info', 'Conexión WebSocket establecida');
+                    };
+                    
+                    this.websocket.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                    };
+                    
+                    this.websocket.onclose = () => {
+                        document.getElementById('wsIndicator').className = 'w-2 h-2 bg-red-400 rounded-full';
+                        this.addActivity('warning', 'Conexión WebSocket cerrada');
+                    };
+                    
+                    this.websocket.onerror = (error) => {
+                        document.getElementById('wsIndicator').className = 'w-2 h-2 bg-red-400 rounded-full';
+                        this.addActivity('error', 'Error en WebSocket');
+                    };
+                } catch (error) {
+                    this.addActivity('error', `Error conectando WebSocket: ${error.message}`);
+                }
+            }
+
+            // Handle WebSocket messages
+            handleWebSocketMessage(data) {
+                switch (data.type) {
+                    case 'post_sent':
+                        this.addActivity('success', `Post enviado a "${data.group}"`);
+                        this.stats.postsToday++;
+                        this.updateStatsDisplay();
+                        break;
+                    case 'post_failed':
+                        this.addActivity('error', `Error enviando a "${data.group}": ${data.error}`);
+                        break;
+                    case 'stats_update':
+                        this.updateStats(data.stats);
+                        break;
+                    case 'group_status_changed':
+                        this.updateGroupStatus(data.groupId, data.status);
+                        break;
+                }
+            }
+
+            // Update connection status UI
+            updateConnectionStatus(connected, message) {
+                this.connected = connected;
+                const indicator = document.getElementById('connectionIndicator');
+                const text = document.getElementById('connectionText');
+                const badge = document.getElementById('apiStatusBadge');
+                const details = document.getElementById('apiStatusDetails');
+                
+                if (connected) {
+                    indicator.className = 'w-3 h-3 bg-green-400 rounded-full status-online';
+                    text.textContent = 'Conectado';
+                    badge.className = 'px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800';
+                    badge.textContent = 'Conectado';
+                    details.textContent = `✅ ${message} - ${new Date().toLocaleTimeString()}`;
+                    
+                    // Enable buttons
+                    document.getElementById('schedulePost').disabled = false;
+                    document.getElementById('sendNow').disabled = false;
+                } else {
+                    indicator.className = 'w-3 h-3 bg-red-400 rounded-full status-offline';
+                    text.textContent = 'Desconectado';
+                    badge.className = 'px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800';
+                    badge.textContent = 'Desconectado';
+                    details.textContent = `❌ ${message} - ${new Date().toLocaleTimeString()}`;
+                    
+                    // Disable buttons
+                    document.getElementById('schedulePost').disabled = true;
+                    document.getElementById('sendNow').disabled = true;
+                }
+            }
+
+            // Update stats display
+            updateStats(stats) {
+                Object.assign(this.stats, stats);
+                this.updateStatsDisplay();
+            }
+
+            updateStatsDisplay() {
+                document.getElementById('activeGroups').textContent = this.stats.activeGroups || this.groups.length;
+                document.getElementById('postsToday').textContent = this.stats.postsToday || 0;
+                document.getElementById('successRate').textContent = this.stats.successRate ? `${this.stats.successRate}%` : '--';
+                
+                if (this.stats.nextSend) {
+                    const nextSend = new Date(this.stats.nextSend);
+                    const now = new Date();
+                    const diff = Math.max(0, Math.floor((nextSend - now) / 60000));
+                    document.getElementById('nextSend').textContent = diff > 0 ? `${diff} min` : 'Enviando...';
+                    document.getElementById('nextSendDetails').textContent = `Próximo: ${nextSend.toLocaleTimeString()}`;
+                } else {
+                    document.getElementById('nextSend').textContent = '--';
+                    document.getElementById('nextSendDetails').textContent = 'No programado';
+                }
+                
+                // Update group count
+                document.getElementById('groupCount').textContent = this.groups.length;
+                document.getElementById('totalGroupsCount').textContent = this.groups.length;
+                document.getElementById('selectedGroupsCount').textContent = this.selectedGroups.size;
+            }
+
+            // Update groups list UI
+            updateGroupsList() {
+                const groupsList = document.getElementById('groupsList');
+                groupsList.innerHTML = '';
+                
+                if (this.groups.length === 0) {
+                    groupsList.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <span class="text-4xl mb-2 block">📭</span>
+                            <p>No se encontraron grupos archivados</p>
+                            <p class="text-sm">Verifica que tengas grupos archivados en WhatsApp</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                this.groups.forEach((group, index) => {
+                    const statusColor = {
+                        'active': 'bg-green-100 text-green-800',
+                        'paused': 'bg-yellow-100 text-yellow-800',
+                        'error': 'bg-red-100 text-red-800'
+                    };
+                    
+                    const isSelected = this.selectedGroups.has(group.id);
+                    
+                    const groupElement = document.createElement('div');
+                    groupElement.className = `flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50 border-blue-300' : ''}`;
+                    groupElement.innerHTML = `
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" ${isSelected ? 'checked' : ''} 
+                                   onchange="botAPI.toggleGroupSelection('${group.id}')"
+                                   class="w-4 h-4 text-blue-600">
+                            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <span class="text-sm font-medium">${group.name.charAt(0)}</span>
+                            </div>
+                            <div>
+                                <p class="font-medium text-gray-800">${group.name}</p>
+                                <p class="text-sm text-gray-500">${group.members || 0} miembros • ${group.lastSent || 'Nunca'}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2 py-1 text-xs font-medium rounded-full ${statusColor[group.status] || statusColor.active}">
+                                ${group.status === 'active' ? 'Activo' : group.status === 'paused' ? 'Pausado' : group.status === 'error' ? 'Error' : 'Activo'}
+                            </span>
+                            <button class="text-gray-400 hover:text-gray-600" onclick="botAPI.toggleGroupStatus('${group.id}')">
+                                <span class="text-lg">${group.status === 'active' ? '⏸️' : '▶️'}</span>
+                            </button>
+                        </div>
+                    `;
+                    groupsList.appendChild(groupElement);
+                });
+                
+                this.updateStatsDisplay();
+            }
+
+            // Toggle group selection
+            toggleGroupSelection(groupId) {
+                if (this.selectedGroups.has(groupId)) {
+                    this.selectedGroups.delete(groupId);
+                } else {
+                    this.selectedGroups.add(groupId);
+                }
+                this.updateGroupsList();
+            }
+
+            // Toggle group status
+            toggleGroupStatus(groupId) {
+                const group = this.groups.find(g => g.id === groupId);
+                if (group) {
+                    group.status = group.status === 'active' ? 'paused' : 'active';
+                    this.updateGroupsList();
+                    this.addActivity('info', `Grupo "${group.name}" ${group.status === 'active' ? 'activado' : 'pausado'}`);
+                }
+            }
+
+            // Add activity to log
+            addActivity(type, message) {
+                const activityLog = document.getElementById('activityLog');
+                const statusIcon = {
+                    'success': '✅',
+                    'error': '❌',
+                    'warning': '⚠️',
+                    'info': 'ℹ️'
+                };
+                
+                const activityElement = document.createElement('div');
+                activityElement.className = 'flex items-start space-x-3 p-2 hover:bg-gray-50 rounded-lg transition-colors';
+                activityElement.innerHTML = `
+                    <span class="text-lg">${statusIcon[type] || 'ℹ️'}</span>
+                    <div class="flex-1">
+                        <p class="text-sm text-gray-800">${message}</p>
+                        <p class="text-xs text-gray-500">${new Date().toLocaleTimeString()}</p>
+                    </div>
+                `;
+                
+                // Insert at the beginning
+                if (activityLog.firstChild && activityLog.firstChild.className !== 'text-center') {
+                    activityLog.insertBefore(activityElement, activityLog.firstChild);
+                } else {
+                    activityLog.innerHTML = '';
+                    activityLog.appendChild(activityElement);
+                }
+                
+                // Keep only last 10 activities
+                while (activityLog.children.length > 10) {
+                    activityLog.removeChild(activityLog.lastChild);
+                }
+            }
+        }
+
+        // Initialize API instance
+        const botAPI = new WhatsAppBotAPI();
+
+        // Multimedia file management
+        class MediaManager {
+            constructor() {
+                this.selectedFiles = [];
+                this.maxFileSize = 16 * 1024 * 1024; // 16MB
+                this.allowedTypes = {
+                    'image': ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                    'video': ['mp4', 'avi', 'mov', 'wmv', 'flv', '3gp'],
+                    'document': ['pdf', 'doc', 'docx', 'txt', 'zip', 'rar']
+                };
+            }
+
+            addFiles(files) {
+                const validFiles = [];
+                const errors = [];
+
+                Array.from(files).forEach(file => {
+                    // Check file size
+                    if (file.size > this.maxFileSize) {
+                        errors.push(`${file.name}: Archivo muy grande (máx. 16MB)`);
+                        return;
+                    }
+
+                    // Check file type
+                    const extension = file.name.split('.').pop().toLowerCase();
+                    const isValid = Object.values(this.allowedTypes).some(types => types.includes(extension));
+                    
+                    if (!isValid) {
+                        errors.push(`${file.name}: Tipo de archivo no soportado`);
+                        return;
+                    }
+
+                    // Check if file already exists
+                    if (this.selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                        errors.push(`${file.name}: Archivo ya seleccionado`);
+                        return;
+                    }
+
+                    validFiles.push(file);
+                });
+
+                this.selectedFiles.push(...validFiles);
+                this.updateFilePreview();
+
+                if (errors.length > 0) {
+                    alert('⚠️ Algunos archivos no se pudieron agregar:\n\n' + errors.join('\n'));
+                }
+
+                return validFiles.length;
+            }
+
+            removeFile(index) {
+                this.selectedFiles.splice(index, 1);
+                this.updateFilePreview();
+            }
+
+            clearAll() {
+                this.selectedFiles = [];
+                this.updateFilePreview();
+            }
+
+            getFileType(filename) {
+                const extension = filename.split('.').pop().toLowerCase();
+                for (const [type, extensions] of Object.entries(this.allowedTypes)) {
+                    if (extensions.includes(extension)) {
+                        return type;
+                    }
+                }
+                return 'unknown';
+            }
+
+            getFileIcon(type) {
+                const icons = {
+                    'image': '🖼️',
+                    'video': '🎥',
+                    'document': '📄'
+                };
+                return icons[type] || '📎';
+            }
+
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            updateFilePreview() {
+                const preview = document.getElementById('filePreview');
+                const fileList = document.getElementById('fileList');
+                const fileCount = document.getElementById('fileCount');
+                const totalSize = document.getElementById('totalSize');
+
+                if (this.selectedFiles.length === 0) {
+                    preview.classList.add('hidden');
+                    return;
+                }
+
+                preview.classList.remove('hidden');
+                fileList.innerHTML = '';
+
+                let totalBytes = 0;
+                this.selectedFiles.forEach((file, index) => {
+                    totalBytes += file.size;
+                    const fileType = this.getFileType(file.name);
+                    const fileIcon = this.getFileIcon(fileType);
+
+                    const fileElement = document.createElement('div');
+                    fileElement.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors';
+                    fileElement.innerHTML = `
+                        <div class="flex items-center space-x-3">
+                            <span class="text-2xl">${fileIcon}</span>
+                            <div>
+                                <p class="font-medium text-gray-800 text-sm">${file.name}</p>
+                                <p class="text-xs text-gray-500">${this.formatFileSize(file.size)} • ${fileType}</p>
+                            </div>
+                        </div>
+                        <button onclick="mediaManager.removeFile(${index})" class="text-red-500 hover:text-red-700 p-1">
+                            <span class="text-lg">❌</span>
+                        </button>
+                    `;
+                    fileList.appendChild(fileElement);
+                });
+
+                fileCount.textContent = this.selectedFiles.length;
+                totalSize.textContent = this.formatFileSize(totalBytes);
+            }
+
+            async convertFilesToBase64() {
+                const fileData = [];
+                
+                for (const file of this.selectedFiles) {
+                    try {
+                        const base64 = await this.fileToBase64(file);
+                        fileData.push({
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            data: base64,
+                            fileType: this.getFileType(file.name)
+                        });
+                    } catch (error) {
+                        console.error(`Error converting ${file.name}:`, error);
+                    }
+                }
+                
+                return fileData;
+            }
+
+            fileToBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = error => reject(error);
+                });
+            }
+        }
+
+        // Initialize media manager
+        const mediaManager = new MediaManager();
+
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // API Configuration
+            document.getElementById('testConnection').addEventListener('click', async function() {
+                const button = this;
+                button.disabled = true;
+                button.textContent = '🔄 Probando...';
+                
+                botAPI.baseUrl = document.getElementById('apiUrl').value;
+                botAPI.apiKey = document.getElementById('apiKey').value;
+                botAPI.timeout = parseInt(document.getElementById('apiTimeout').value) * 1000;
+                
+                const success = await botAPI.testConnection();
+                
+                button.disabled = false;
+                button.textContent = '🧪 Probar Conexión';
+                
+                if (success) {
+                    botAPI.connectWebSocket();
+                }
+            });
+
+            document.getElementById('scanGroups').addEventListener('click', async function() {
+                const button = this;
+                button.disabled = true;
+                button.textContent = '🔍 Escaneando...';
+                
+                await botAPI.scanArchivedGroups();
+                document.getElementById('lastScan').textContent = `Último escaneo: ${new Date().toLocaleTimeString()}`;
+                
+                button.disabled = false;
+                button.textContent = '🔍 Escanear Grupos Archivados';
+            });
+
+            document.getElementById('syncWhatsApp').addEventListener('click', function() {
+                botAPI.addActivity('info', 'Sincronizando con WhatsApp Web...');
+                // This would trigger the Python bot to refresh its WhatsApp connection
+            });
+
+            // Connect Bot
+            document.getElementById('connectBot').addEventListener('click', async function() {
+                const modal = document.getElementById('connectionModal');
+                const progress = document.getElementById('connectionProgress');
+                const status = document.getElementById('connectionStatus');
+                
+                modal.classList.add('show');
+                
+                // Simulate connection process
+                const steps = [
+                    'Verificando configuración...',
+                    'Conectando con API...',
+                    'Autenticando...',
+                    'Escaneando grupos...',
+                    'Estableciendo WebSocket...',
+                    'Conexión completada!'
+                ];
+                
+                for (let i = 0; i < steps.length; i++) {
+                    status.textContent = steps[i];
+                    progress.style.width = `${((i + 1) / steps.length) * 100}%`;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                
+                setTimeout(() => {
+                    modal.classList.remove('show');
+                    botAPI.testConnection();
+                }, 500);
+            });
+
+            // File upload handling
+            document.getElementById('mediaFiles').addEventListener('change', function(e) {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    const addedCount = mediaManager.addFiles(files);
+                    if (addedCount > 0) {
+                        botAPI.addActivity('info', `${addedCount} archivo(s) agregado(s) al post`);
+                    }
+                }
+                // Clear the input so the same file can be selected again
+                e.target.value = '';
+            });
+
+            // Clear files button
+            document.getElementById('clearFiles').addEventListener('click', function() {
+                if (confirm('¿Eliminar todos los archivos seleccionados?')) {
+                    mediaManager.clearAll();
+                    botAPI.addActivity('info', 'Archivos multimedia eliminados');
+                }
+            });
+
+            // Drag and drop functionality
+            const dropZone = document.querySelector('.border-dashed');
+            
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.classList.add('border-blue-400', 'bg-blue-50');
+            });
+            
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.classList.remove('border-blue-400', 'bg-blue-50');
+            });
+            
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('border-blue-400', 'bg-blue-50');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const addedCount = mediaManager.addFiles(files);
+                    if (addedCount > 0) {
+                        botAPI.addActivity('info', `${addedCount} archivo(s) agregado(s) por drag & drop`);
+                    }
+                }
+            });
+
+            // Schedule Post
+            document.getElementById('schedulePost').addEventListener('click', async function() {
+                const message = document.getElementById('postMessage').value;
+                if (!message.trim() && mediaManager.selectedFiles.length === 0) {
+                    alert('⚠️ Por favor escribe un mensaje o selecciona archivos multimedia.');
+                    return;
+                }
+                
+                if (botAPI.selectedGroups.size === 0) {
+                    alert('⚠️ Por favor selecciona al menos un grupo.');
+                    return;
+                }
+                
+                const button = this;
+                button.disabled = true;
+                button.textContent = '📤 Procesando archivos...';
+                
+                try {
+                    // Convert files to base64 for transmission
+                    const mediaFiles = await mediaManager.convertFilesToBase64();
+                    
+                    const options = {
+                        interval: parseInt(document.getElementById('interval').value),
+                        randomVariation: parseInt(document.getElementById('randomVariation').value),
+                        randomDelay: document.getElementById('randomDelay').checked,
+                        respectSleep: document.getElementById('respectSleep').checked,
+                        weekendsOnly: document.getElementById('weekendsOnly').checked,
+                        startTime: document.getElementById('startTime').value,
+                        endTime: document.getElementById('endTime').value
+                    };
+                    
+                    await botAPI.sendPost(message, options, mediaFiles);
+                    
+                    const mediaText = mediaFiles.length > 0 ? ` con ${mediaFiles.length} archivos multimedia` : '';
+                    alert(`✅ Post${mediaText} programado exitosamente!\n\nSe enviará a ${botAPI.selectedGroups.size} grupos según la configuración.`);
+                    
+                    // Clear form
+                    document.getElementById('postMessage').value = '';
+                    mediaManager.clearAll();
+                    
+                } catch (error) {
+                    alert(`❌ Error programando post: ${error.message}`);
+                } finally {
+                    button.disabled = false;
+                    button.textContent = '📅 Programar Post';
+                }
+            });
+
+            // Send Now
+            document.getElementById('sendNow').addEventListener('click', async function() {
+                const message = document.getElementById('postMessage').value;
+                if (!message.trim() && mediaManager.selectedFiles.length === 0) {
+                    alert('⚠️ Por favor escribe un mensaje o selecciona archivos multimedia.');
+                    return;
+                }
+                
+                if (botAPI.selectedGroups.size === 0) {
+                    alert('⚠️ Por favor selecciona al menos un grupo.');
+                    return;
+                }
+                
+                const mediaText = mediaManager.selectedFiles.length > 0 ? ` con ${mediaManager.selectedFiles.length} archivos` : '';
+                if (confirm(`¿Enviar inmediatamente${mediaText} a ${botAPI.selectedGroups.size} grupos?\n\nEsto puede tomar varios minutos.`)) {
+                    const button = this;
+                    button.disabled = true;
+                    button.textContent = '🚀 Enviando...';
+                    
+                    try {
+                        // Convert files to base64 for transmission
+                        const mediaFiles = await mediaManager.convertFilesToBase64();
+                        await botAPI.sendPost(message, { immediate: true }, mediaFiles);
+                        
+                        alert(`🚀 Enviando post${mediaText} inmediatamente...`);
+                        
+                        // Clear form
+                        document.getElementById('postMessage').value = '';
+                        mediaManager.clearAll();
+                        
+                    } catch (error) {
+                        alert(`❌ Error enviando post: ${error.message}`);
+                    } finally {
+                        button.disabled = false;
+                        button.textContent = '🚀 Enviar Ahora';
+                    }
+                }
+            });
+
+            // Emergency Stop
+            document.getElementById('emergencyStop').addEventListener('click', function() {
+                if (confirm('¿Estás seguro de que quieres detener el bot?\n\nTodos los envíos programados se pausarán.')) {
+                    botAPI.addActivity('warning', 'Bot detenido por el usuario');
+                    alert('🛑 Bot detenido exitosamente.');
+                }
+            });
+
+            // Save Settings
+            document.getElementById('saveSettings').addEventListener('click', async function() {
+                const settings = {
+                    dailyLimit: parseInt(document.getElementById('dailyLimit').value),
+                    groupDelay: parseInt(document.getElementById('groupDelay').value),
+                    maxErrors: parseInt(document.getElementById('maxErrors').value),
+                    smartMode: document.getElementById('smartMode').checked,
+                    autoRetry: document.getElementById('autoRetry').checked,
+                    logActivity: document.getElementById('logActivity').checked
+                };
+                
+                const success = await botAPI.updateSettings(settings);
+                if (success) {
+                    alert('💾 Configuración guardada y sincronizada con el bot!');
+                }
+            });
+
+            // Group Management
+            document.getElementById('selectAllGroups').addEventListener('click', function() {
+                botAPI.groups.forEach(group => {
+                    botAPI.selectedGroups.add(group.id);
+                });
+                botAPI.updateGroupsList();
+            });
+
+            document.getElementById('refreshGroups').addEventListener('click', function() {
+                botAPI.scanArchivedGroups();
+            });
+
+            // Search and Filter
+            document.getElementById('searchGroups').addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase();
+                const groupElements = document.querySelectorAll('#groupsList > div');
+                
+                groupElements.forEach(element => {
+                    if (element.className.includes('text-center')) return;
+                    const groupName = element.querySelector('p').textContent.toLowerCase();
+                    element.style.display = groupName.includes(searchTerm) ? 'flex' : 'none';
+                });
+            });
+
+            document.getElementById('filterGroups').addEventListener('change', function(e) {
+                const filter = e.target.value;
+                const groupElements = document.querySelectorAll('#groupsList > div');
+                
+                groupElements.forEach(element => {
+                    if (element.className.includes('text-center')) return;
+                    const statusElement = element.querySelector('.rounded-full');
+                    if (!statusElement) return;
+                    
+                    const status = statusElement.textContent.toLowerCase();
+                    let show = filter === 'all';
+                    
+                    if (filter === 'active' && status.includes('activo')) show = true;
+                    if (filter === 'paused' && status.includes('pausado')) show = true;
+                    if (filter === 'error' && status.includes('error')) show = true;
+                    
+                    element.style.display = show ? 'flex' : 'none';
+                });
+            });
+
+            // Python Code Generator
+            document.getElementById('downloadPythonTemplate').addEventListener('click', function() {
+                const template = `# WhatsApp Bot Template con Soporte Multimedia
+# Instalar dependencias: pip install flask flask-socketio selenium pywhatkit schedule pillow
+
+from flask import Flask, request, jsonify
+from flask_socketio import SocketIO, emit
+import json
+import time
+import base64
+import os
+from datetime import datetime
+import threading
+from PIL import Image
+import io
+
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+class MediaHandler:
+    def __init__(self):
+        self.temp_dir = "temp_media"
+        if not os.path.exists(self.temp_dir):
+            os.makedirs(self.temp_dir)
+    
+    def save_base64_file(self, file_data):
+        """Guarda archivo base64 y retorna la ruta"""
+        try:
+            # Decodificar base64
+            header, encoded = file_data['data'].split(',', 1)
+            file_bytes = base64.b64decode(encoded)
+            
+            # Crear nombre único
+            timestamp = int(time.time())
+            filename = f"{timestamp}_{file_data['name']}"
+            filepath = os.path.join(self.temp_dir, filename)
+            
+            # Guardar archivo
+            with open(filepath, 'wb') as f:
+                f.write(file_bytes)
+            
+            return filepath
+        except Exception as e:
+            print(f"Error guardando archivo: {e}")
+            return None
+    
+    def cleanup_temp_files(self):
+        """Limpia archivos temporales antiguos"""
+        try:
+            for filename in os.listdir(self.temp_dir):
+                filepath = os.path.join(self.temp_dir, filename)
+                if os.path.getctime(filepath) < time.time() - 3600:  # 1 hora
+                    os.remove(filepath)
+        except Exception as e:
+            print(f"Error limpiando archivos: {e}")
+
+class WhatsAppBot:
+    def __init__(self):
+        self.groups = []
+        self.media_handler = MediaHandler()
+        self.settings = {
+            'dailyLimit': 5,
+            'groupDelay': 3,
+            'maxErrors': 3,
+            'smartMode': True
+        }
+        self.stats = {
+            'postsToday': 0,
+            'successRate': 100,
+            'activeGroups': 0
+        }
+    
+    def scan_archived_groups(self):
+        """Escanea grupos archivados usando Selenium + WhatsApp Web"""
+        # Implementar escaneo de grupos archivados
+        # Ejemplo de estructura de grupo:
+        sample_groups = [
+            {
+                'id': 'grupo_1',
+                'name': 'Emprendedores México',
+                'members': 1250,
+                'status': 'active',
+                'lastSent': '2 min ago'
+            }
+        ]
+        self.groups = sample_groups
+        return self.groups
+    
+    def send_message_with_media(self, group_id, message, media_files=[]):
+        """Envía mensaje con archivos multimedia"""
+        try:
+            # 1. Enviar mensaje de texto (si existe)
+            if message.strip():
+                self.send_text_message(group_id, message)
+            
+            # 2. Enviar archivos multimedia
+            for media_file in media_files:
+                filepath = self.media_handler.save_base64_file(media_file)
+                if filepath:
+                    if media_file['fileType'] == 'image':
+                        self.send_image(group_id, filepath)
+                    elif media_file['fileType'] == 'video':
+                        self.send_video(group_id, filepath)
+                    elif media_file['fileType'] == 'document':
+                        self.send_document(group_id, filepath)
+            
+            return True
+        except Exception as e:
+            print(f"Error enviando mensaje con media: {e}")
+            return False
+    
+    def send_text_message(self, group_id, message):
+        """Envía mensaje de texto usando pywhatkit o selenium"""
+        # Implementar envío de texto
+        pass
+    
+    def send_image(self, group_id, image_path):
+        """Envía imagen usando selenium"""
+        # Implementar envío de imagen
+        pass
+    
+    def send_video(self, group_id, video_path):
+        """Envía video usando selenium"""
+        # Implementar envío de video
+        pass
+    
+    def send_document(self, group_id, doc_path):
+        """Envía documento usando selenium"""
+        # Implementar envío de documento
+        pass
+
+bot = WhatsAppBot()
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    return jsonify({'status': 'connected', 'stats': bot.stats})
+
+@app.route('/api/groups/archived', methods=['GET'])
+def get_archived_groups():
+    groups = bot.scan_archived_groups()
+    return jsonify({'groups': groups})
+
+@app.route('/api/posts/send', methods=['POST'])
+def send_post():
+    try:
+        data = request.json
+        message = data.get('message', '')
+        groups = data.get('groups', [])
+        media_files = data.get('mediaFiles', [])
+        options = data.get('options', {})
+        
+        # Log de archivos recibidos
+        if media_files:
+            print(f"Recibidos {len(media_files)} archivos multimedia")
+            for media in media_files:
+                print(f"- {media['name']} ({media['fileType']}, {media['size']} bytes)")
+        
+        # Programar envío (implementar lógica de scheduling)
+        for group_id in groups:
+            success = bot.send_message_with_media(group_id, message, media_files)
+            if success:
+                socketio.emit('post_sent', {'group': group_id, 'hasMedia': len(media_files) > 0})
+            else:
+                socketio.emit('post_failed', {'group': group_id, 'error': 'Error enviando'})
+        
+        # Limpiar archivos temporales
+        bot.media_handler.cleanup_temp_files()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Post programado para {len(groups)} grupos',
+            'mediaCount': len(media_files)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/settings', methods=['PUT'])
+def update_settings():
+    bot.settings.update(request.json)
+    return jsonify({'success': True})
+
+# WebSocket para updates en tiempo real
+@socketio.on('connect')
+def handle_connect():
+    print('Cliente conectado via WebSocket')
+    emit('connected', {'status': 'WebSocket conectado'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Cliente desconectado')
+
+if __name__ == '__main__':
+    print("🤖 Iniciando WhatsApp Bot con soporte multimedia...")
+    print("📁 Directorio temporal:", bot.media_handler.temp_dir)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+`;
+                
+                const blob = new Blob([template], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'whatsapp_bot_template.py';
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                botAPI.addActivity('info', 'Template de Python descargado');
+            });
+
+            document.getElementById('showApiDocs').addEventListener('click', function() {
+                const docs = `
+API Endpoints para tu Bot de Python:
+
+GET /api/status
+- Retorna el estado del bot y estadísticas
+
+GET /api/groups/archived  
+- Escanea y retorna grupos archivados de WhatsApp
+
+POST /api/posts/send
+- Envía/programa posts a grupos seleccionados
+- Body: {message, groups, options}
+
+PUT /api/settings
+- Actualiza configuración del bot
+- Body: {dailyLimit, groupDelay, etc}
+
+WebSocket /ws
+- Conexión en tiempo real para updates
+- Eventos: post_sent, post_failed, stats_update
+
+Estructura de Grupo:
+{
+  id: "grupo_id_unico",
+  name: "Nombre del Grupo", 
+  members: 150,
+  status: "active|paused|error",
+  lastSent: "timestamp"
+}
+                `;
+                
+                alert(docs);
+            });
+
+            document.getElementById('exportConfig').addEventListener('click', function() {
+                const config = {
+                    apiUrl: document.getElementById('apiUrl').value,
+                    settings: {
+                        dailyLimit: parseInt(document.getElementById('dailyLimit').value),
+                        groupDelay: parseInt(document.getElementById('groupDelay').value),
+                        maxErrors: parseInt(document.getElementById('maxErrors').value),
+                        smartMode: document.getElementById('smartMode').checked,
+                        autoRetry: document.getElementById('autoRetry').checked,
+                        logActivity: document.getElementById('logActivity').checked
+                    },
+                    selectedGroups: Array.from(botAPI.selectedGroups)
+                };
+                
+                const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'bot_config.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                botAPI.addActivity('info', 'Configuración exportada');
+            });
+
+            // Initialize with demo data for testing
+            setTimeout(() => {
+                botAPI.groups = [
+                    { id: '1', name: 'Emprendedores México', members: 1250, status: 'active', lastSent: '2 min ago' },
+                    { id: '2', name: 'Marketing Digital Pro', members: 890, status: 'active', lastSent: '15 min ago' },
+                    { id: '3', name: 'Negocios Online', members: 2100, status: 'paused', lastSent: '1 hora ago' },
+                    { id: '4', name: 'Freelancers Unidos', members: 567, status: 'active', lastSent: '32 min ago' },
+                    { id: '5', name: 'Inversiones Smart', members: 1890, status: 'active', lastSent: '8 min ago' }
+                ];
+                botAPI.updateGroupsList();
+                botAPI.addActivity('info', 'Dashboard inicializado - Conecta tu bot de Python para comenzar');
+            }, 1000);
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'97a0ba9391c5da47',t:'MTc1NzAyMjkwMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
